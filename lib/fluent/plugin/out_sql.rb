@@ -11,7 +11,6 @@ module Fluent
     config_param :username, :string, :default => nil
     config_param :password, :string, :default => nil
     config_param :database, :string
-    config_param :socket, :string, :default => nil
     config_param :remove_tag_prefix, :string, :default => nil
 
     attr_accessor :tables
@@ -27,6 +26,7 @@ module Fluent
       config_param :table, :string
       config_param :column_mapping, :string
       config_param :num_retries, :integer, :default => 5
+      config_param :auto_timestamps, :bool, :default => true
 
       attr_reader :model
       attr_reader :pattern
@@ -79,7 +79,8 @@ module Fluent
           end
         }
         begin
-          @model.import(records, :timestamps => false)
+	  @log.warn "auto_timestamps #{auto_timestamps}"
+          @model.import(records, :timestamps => @auto_timestamps)
         rescue ActiveRecord::StatementInvalid, ActiveRecord::ThrowResult, ActiveRecord::Import::MissingColumnError => e
           # ignore other exceptions to use Fluentd retry mechanizm
           @log.warn "Got deterministic error. Fallback to one-by-one import", :error => e.message, :error_class => e.class
@@ -91,7 +92,7 @@ module Fluent
         records.each { |record|
           retries = 0
           begin
-            @model.import([record], :timestamps => false)
+            @model.import([record])
           rescue ActiveRecord::StatementInvalid, ActiveRecord::ThrowResult, ActiveRecord::Import::MissingColumnError => e
             @log.error "Got deterministic error again. Dump a record", :error => e.message, :error_class => e.class, :record => record
           rescue => e
@@ -165,7 +166,6 @@ module Fluent
         :database => @database,
         :username => @username,
         :password => @password,
-        :socket => @socket,
       }
 
       @base_model = Class.new(ActiveRecord::Base) do
@@ -215,7 +215,7 @@ module Fluent
         log.info "Selecting '#{te.table}' table"
         false
       rescue => e
-        log.warn "Can't handle '#{te.table}' table. Ignoring.", :error => e.message, :error_class => e.class
+        log.warn "Can't handle '#{te.table}' table. Ignoring.", :error => e
         log.warn_backtrace e.backtrace
         true
       end
